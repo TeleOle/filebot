@@ -49,11 +49,10 @@ class Config:
     3. Or use a .env file (added to .gitignore)
     """
     # --- Load from environment or use defaults for testing ---
-    API_ID = int(os.getenv("TELEGRAM_API_ID"))
-API_HASH = os.getenv("TELEGRAM_API_HASH")
-BOT_TOKEN = os.getenv("MANAGER_BOT_TOKEN")
-MAIN_ADMIN_ID = int(os.getenv("MAIN_ADMIN_ID"))
-
+    API_ID = int(os.getenv('TELEGRAM_API_ID', '28543048'))
+    API_HASH = os.getenv('TELEGRAM_API_HASH', 'bc32851127c03fb5d98bc455c8e3463e')
+    BOT_TOKEN = os.getenv('MANAGER_BOT_TOKEN', '8186591808:AAHvHijENUxmMbqjEShoTsdRcAsAwtj-_h4')
+    MAIN_ADMIN_ID = int(os.getenv('MAIN_ADMIN_ID', '7221482367'))
     
     # Data file configuration
     DATA_FILE = Path("bot_data.json")
