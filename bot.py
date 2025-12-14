@@ -1,3 +1,6 @@
+# save as bot_add_channel.py
+# Requires: python-telegram-bot>=20.0
+# pip install python-telegram-bot --upgrade
 
 import logging
 import os
@@ -39,35 +42,21 @@ logger = logging.getLogger(__name__)
 # --- Configuration ---
 class Config:
     """
-    ⚠️ SECURITY WARNING: 
-    The hardcoded values below should ONLY be used for local testing.
-    NEVER commit real credentials to version control (git, etc.)
-    
-    For production:
-    1. Remove the default values
-    2. Use environment variables only
-    3. Or use a .env file (added to .gitignore)
+    Configuration loaded from environment variables.
+    Set these environment variables before running:
+    - TELEGRAM_API_ID
+    - TELEGRAM_API_HASH
+    - MANAGER_BOT_TOKEN
+    - MAIN_ADMIN_ID
     """
----
-# --- Load from environment or use defaults for testing ---
-class Config:
+    API_ID = int(os.getenv('TELEGRAM_API_ID', '0'))
+    API_HASH = os.getenv('TELEGRAM_API_HASH', '')
+    BOT_TOKEN = os.getenv('MANAGER_BOT_TOKEN', '')
+    MAIN_ADMIN_ID = int(os.getenv('MAIN_ADMIN_ID', '0'))
 
-
-    API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
-
-
-    API_HASH = os.getenv("TELEGRAM_API_HASH", "")
-
-
-    BOT_TOKEN = os.getenv("MANAGER_BOT_TOKEN", "")
-
-
-    MAIN_ADMIN_ID = int(os.getenv("MAIN_ADMIN_ID", "0"))
-
-
+    # Data file configuration
     DATA_FILE = Path("bot_data.json")
 
-    
     @classmethod
     def validate(cls):
         """Validate that all required configuration is present."""
@@ -115,25 +104,25 @@ def save_data():
 # --- Helper Functions for Media Processing ---
 async def download_telegram_file(context: ContextTypes.DEFAULT_TYPE, file_id: str, file_extension: str, max_size_mb: int = 20) -> Path:
     """Downloads a file from Telegram and returns its local path.
-    
+
     Args:
         context: Bot context
         file_id: Telegram file ID
         file_extension: File extension
         max_size_mb: Maximum file size in MB (default 20MB - Telegram bot API limit)
-    
+
     Raises:
         Exception: If file is too large
     """
     new_file = await context.bot.get_file(file_id)
-    
+
     # Check file size (file_size is in bytes)
     file_size_mb = new_file.file_size / (1024 * 1024)
     logger.info(f"File size: {file_size_mb:.2f} MB")
-    
+
     if file_size_mb > max_size_mb:
         raise Exception(f"File is too large ({file_size_mb:.2f} MB). Maximum size is {max_size_mb} MB.")
-    
+
     unique_filename = f"{uuid.uuid4()}.{file_extension}"
     download_path = TEMP_DIR / unique_filename
     await new_file.download_to_drive(download_path)
@@ -157,10 +146,10 @@ async def apply_image_watermark(
     try:
         # Calculate watermark size as percentage of main media
         watermark_scale = f"iw*{size/100}"
-        
+
         # Calculate alpha (transparency)
         alpha = (100 - transparency) / 100
-        
+
         # Position mapping for overlay
         positions = {
             "top_left": "10:10",
@@ -173,44 +162,44 @@ async def apply_image_watermark(
             "bottom_center": "(main_w-overlay_w)/2:main_h-overlay_h-10",
             "bottom_right": "main_w-overlay_w-10:main_h-overlay_h-10",
         }
-        
+
         overlay_position = positions.get(position, "main_w-overlay_w-10:main_h-overlay_h-10")
-        
+
         # Build watermark filter with rotation
         watermark_filter = f"[1:v]scale={watermark_scale}:-1,format=rgba"
-        
+
         # Add rotation if specified (rotation works for images/GIFs!)
         if rotation != 0:
             # Convert degrees to radians for FFmpeg
             radians = rotation * 3.14159 / 180
             watermark_filter += f",rotate={radians}:c=none:ow='hypot(iw,ih)':oh=ow"
-        
+
         # Add transparency
         watermark_filter += f",colorchannelmixer=aa={alpha}[wm]"
-        
+
         # Build overlay filter with moving effects for videos
         if is_video and effect in ["move_diagonal_dr", "move_diagonal_dl", "move_diagonal_ur", "move_diagonal_ul"]:
             # Moving diagonal effects
             speed_factor = effect_speed / 50.0  # 1-100 -> 0.02-2.0
-            
+
             if effect == "move_diagonal_dr":
                 # Top-Left → Down-Right
                 x_expr = f"t*{speed_factor*100}*W/10"
                 y_expr = f"t*{speed_factor*100}*H/10"
                 overlay_filter = f"[0:v][wm]overlay={x_expr}:{y_expr}:shortest=1"
-                
+
             elif effect == "move_diagonal_dl":
                 # Top-Right → Down-Left  
                 x_expr = f"W-overlay_w-t*{speed_factor*100}*W/10"
                 y_expr = f"t*{speed_factor*100}*H/10"
                 overlay_filter = f"[0:v][wm]overlay={x_expr}:{y_expr}:shortest=1"
-                
+
             elif effect == "move_diagonal_ur":
                 # Bottom-Left → Up-Right
                 x_expr = f"t*{speed_factor*100}*W/10"
                 y_expr = f"H-overlay_h-t*{speed_factor*100}*H/10"
                 overlay_filter = f"[0:v][wm]overlay={x_expr}:{y_expr}:shortest=1"
-                
+
             elif effect == "move_diagonal_ul":
                 # Bottom-Right → Up-Left
                 x_expr = f"W-overlay_w-t*{speed_factor*100}*W/10"
@@ -222,7 +211,7 @@ async def apply_image_watermark(
                 overlay_filter = f"[0:v][wm]overlay={overlay_position}:shortest=1"
             else:
                 overlay_filter = f"[0:v][wm]overlay={overlay_position}"
-        
+
         if is_video:
             # For video
             crf = max(0, min(51, 51 - int(quality * 51 / 100)))
@@ -251,22 +240,22 @@ async def apply_image_watermark(
                 "-q:v", str(max(1, min(31, int((100-quality)*31/100)))),
                 str(output_path)
             ]
-        
+
         logger.info(f"Running FFmpeg command for image watermark: {' '.join(cmd)}")
-        
+
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=300
         )
-        
+
         if result.returncode != 0:
             raise Exception(f"FFmpeg failed: {result.stderr}")
-        
+
         logger.info(f"Image watermark applied successfully to {output_path}")
         return output_path
-        
+
     except subprocess.TimeoutExpired:
         raise Exception("FFmpeg timed out after 5 minutes")
     except Exception as e:
@@ -301,14 +290,14 @@ async def apply_watermark(
         "bottom_center": "x=(w-text_w)/2:y=h-text_h-10",
         "bottom_right": "x=w-text_w-10:y=h-text_h-10",
     }
-    
+
     # Calculate font size based on input size (more reasonable calculation)
     base_font_size = 48  # Base font size for 100% at 1080p
     font_size = max(12, int(base_font_size * (size / 100)))  # Minimum 12px
-    
+
     # Transparency (alpha) for FFmpeg drawtext filter
     alpha = (100 - transparency) / 100.0
-    
+
     # Color mapping
     color_map = {
         "white": "white",
@@ -334,13 +323,13 @@ async def apply_watermark(
         "/System/Library/Fonts/Helvetica.ttc",
         "C:/Windows/Fonts/arial.ttf",
     ]
-    
+
     font_file = None
     for font_path in font_paths:
         if Path(font_path).exists():
             font_file = font_path
             break
-    
+
     # Build base drawtext filter
     if font_file:
         font_file = font_file.replace("\\", "/").replace(":", "\\:")
@@ -348,15 +337,15 @@ async def apply_watermark(
     else:
         logger.warning("No font file found, using FFmpeg default font")
         base_filter = f"drawtext=text='{escaped_text}'"
-    
+
     # Add color and alpha
     base_filter += f":fontcolor={font_color}@{alpha}:fontsize={font_size}"
-    
+
     # Handle effects for videos
     if is_video and effect != "none":
         # Calculate speed: higher effect_speed value = slower movement
         speed_factor = 100.0 / effect_speed
-        
+
         if effect == "scroll_left":
             # Move from right to left
             drawtext_filter = f"{base_filter}:x=w-mod(t*{speed_factor}*w\\,w+text_w):y=(h-text_h)/2"
@@ -399,7 +388,7 @@ async def apply_watermark(
     else:
         # Static position (for images or no effect)
         drawtext_filter = f"{base_filter}:{pos_map.get(position, 'x=w-text_w-10:y=h-text_h-10')}"
-    
+
     logger.info(f"Watermark settings - Size: {size}% → {font_size}px, Transparency: {transparency}%, Quality: {quality}%, Color: {font_color}, Effect: {effect}, Speed: {effect_speed}")
 
     ffmpeg_command = [
@@ -410,117 +399,6 @@ async def apply_watermark(
 
     if is_video:
         # For video, apply drawtext filter to video stream
-        crf_value = int(51 - (quality * 0.51))
-        ffmpeg_command.extend([
-            "-vf", drawtext_filter,
-            "-preset", "medium",
-            "-crf", str(crf_value),
-            "-c:a", "copy",  # Copy audio stream without re-encoding
-            str(output_path)
-        ])
-    else:
-        # For images, apply drawtext filter
-        ffmpeg_command.extend([
-            "-vf", drawtext_filter,
-            "-q:v", str(int((100 - quality) * 0.31)),  # Quality for JPEG (2-31, lower is better)
-            str(output_path)
-        ])
-
-    try:
-        logger.info(f"Running FFmpeg command: {' '.join(ffmpeg_command)}")
-        process = await asyncio.create_subprocess_exec(
-            *ffmpeg_command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
-
-        if process.returncode != 0:
-            logger.error(f"FFmpeg error: {stderr.decode()}")
-            raise Exception(f"FFmpeg failed: {stderr.decode()}")
-
-        logger.info(f"Watermark applied successfully to {output_path}")
-        return output_path
-    except FileNotFoundError:
-        raise Exception("FFmpeg executable not found. Please ensure FFmpeg is installed and added to your system's PATH.")
-
-    # Position mapping for FFmpeg
-    pos_map = {
-        "top_left": "x=10:y=10",
-        "top_center": "x=(w-text_w)/2:y=10",
-        "top_right": "x=w-text_w-10:y=10",
-        "mid_left": "x=10:y=(h-text_h)/2",
-        "center": "x=(w-text_w)/2:y=(h-text_h)/2",
-        "mid_right": "x=w-text_w-10:y=(h-text_h)/2",
-        "bottom_left": "x=10:y=h-text_h-10",
-        "bottom_center": "x=(w-text_w)/2:y=h-text_h-10",
-        "bottom_right": "x=w-text_w-10:y=h-text_h-10",
-    }
-    
-    drawtext_pos = pos_map.get(position, "x=w-text_w-10:y=h-text_h-10") # Default to bottom_right
-
-    # Calculate font size based on input size (more reasonable calculation)
-    # Size is a percentage (1-100), we'll make it relative to a base size
-    base_font_size = 48  # Base font size for 100% at 1080p
-    font_size = max(12, int(base_font_size * (size / 100)))  # Minimum 12px
-    
-    logger.info(f"Watermark settings - Size: {size}% → {font_size}px, Transparency: {transparency}%, Quality: {quality}%")
-
-    # Transparency (alpha) for FFmpeg drawtext filter
-    # FFmpeg alpha is 0.0 (fully transparent) to 1.0 (fully opaque)
-    alpha = (100 - transparency) / 100.0
-
-    # Escape special characters in text for FFmpeg
-    escaped_text = watermark_text.replace(":", "\\:").replace("'", "\\'")
-
-    # Base drawtext filter - fontfile may need to be adjusted based on your system
-    # Common font paths:
-    # Linux: /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
-    # Windows: C\\:/Windows/Fonts/arial.ttf
-    # macOS: /Library/Fonts/Arial.ttf
-    
-    # Try to find a font file
-    font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "C:/Windows/Fonts/arial.ttf",
-    ]
-    
-    font_file = None
-    for font_path in font_paths:
-        if Path(font_path).exists():
-            font_file = font_path
-            break
-    
-    if not font_file:
-        logger.warning("No font file found, using FFmpeg default font")
-        drawtext_filter = (
-            f"drawtext=text='{escaped_text}':"
-            f"fontcolor=white@{alpha}:"
-            f"fontsize={font_size}:"
-            f"{drawtext_pos}"
-        )
-    else:
-        # Escape backslashes for Windows paths
-        font_file = font_file.replace("\\", "/").replace(":", "\\:")
-        drawtext_filter = (
-            f"drawtext=fontfile='{font_file}':"
-            f"text='{escaped_text}':"
-            f"fontcolor=white@{alpha}:"
-            f"fontsize={font_size}:"
-            f"{drawtext_pos}"
-        )
-
-    ffmpeg_command = [
-        "ffmpeg",
-        "-i", str(input_path),
-        "-y",  # Overwrite output file
-    ]
-
-    if is_video:
-        # For video, apply drawtext filter to video stream
-        # CRF: 0-51, lower is better quality. Map quality percentage to CRF
         crf_value = int(51 - (quality * 0.51))
         ffmpeg_command.extend([
             "-vf", drawtext_filter,
@@ -585,22 +463,22 @@ def make_channel_list_keyboard(user_id: int):
             [InlineKeyboardButton("⪡ Back to Main Menu", callback_data="back_to_main")],
         ]
         return InlineKeyboardMarkup(kb)
-    
+
     kb = []
     # Create a button for each channel/group with proper icon
     for ch in channels:
         title = ch.get("title") or ch.get("username") or str(ch.get("id"))
         chat_type = ch.get("type", "channel")  # Default to channel if type not specified
-        
+
         # Add appropriate icon based on chat type
         if chat_type == "group" or chat_type == "supergroup":
             icon = "👥"
         else:
             icon = "📢"
-        
+
         data = f"select_{ch['id']}"
         kb.append([InlineKeyboardButton(f"{icon} {title}", callback_data=data)])
-    
+
     # Add control buttons at the bottom
     kb.append([InlineKeyboardButton("➕ Add another channel/group", callback_data="add_channel")])
     kb.append([InlineKeyboardButton("⪡ Back to Main Menu", callback_data="back_to_main")])
@@ -652,7 +530,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             c_url = f"https://t.me/{bot_username}?startchannel&admin={permissions_list}"
             g_url = f"https://t.me/{bot_username}?startgroup&admin={permissions_list}"
-            
+
             text = (
                 "📢 *ADD ME TO YOUR CHANNEL OR GROUP*\n\n"
                 "Choose where you want to add me:\n\n"
@@ -677,12 +555,12 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "show_channels":
             # Show the user's saved channels/groups
             channels = USER_CHANNELS.get(user_id, [])
-            
+
             if channels:
                 # Count channels and groups
                 channel_count = sum(1 for c in channels if c.get("type", "channel") == "channel")
                 group_count = sum(1 for c in channels if c.get("type", "channel") in ["group", "supergroup"])
-                
+
                 text = f"📂 *YOUR SAVED CHANNELS & GROUPS*\n\n"
                 text += f"📢 Channels: {channel_count}\n"
                 text += f"👥 Groups: {group_count}\n"
@@ -690,7 +568,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += "Select one to manage its settings:"
             else:
                 text = "❌ *NO CHANNELS OR GROUPS SAVED*\n\nYou haven't added any channels or groups yet.\n\nClick the button below to add one!"
-            
+
             await query.edit_message_text(
                 text, 
                 reply_markup=make_channel_list_keyboard(user_id),
@@ -718,7 +596,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 new_status = "active" if current_status == "inactive" else "inactive"
                 chosen.setdefault("auto_watermark", {})["status"] = new_status
                 save_data()
-            
+
             await send_auto_watermark_settings(update, context, user_id, ch_id)
             return
 
@@ -784,15 +662,15 @@ Please send your watermark now:
             else:
                 rotation = int(parts[2])
                 ch_id = int(parts[3])
-                
+
                 channels = USER_CHANNELS.get(user_id, [])
                 chosen = next((c for c in channels if c["id"] == ch_id), None)
-                
+
                 if chosen:
                     chosen.setdefault("auto_watermark", {})["rotation"] = rotation
                     save_data()
                     await query.answer(f"✅ Rotation set to {rotation}°")
-                
+
                 await send_auto_watermark_settings(update, context, user_id, ch_id)
             return
 
@@ -805,15 +683,15 @@ Please send your watermark now:
             parts = data.split("_")
             color = parts[2]
             ch_id = int(parts[3])
-            
+
             channels = USER_CHANNELS.get(user_id, [])
             chosen = next((c for c in channels if c["id"] == ch_id), None)
-            
+
             if chosen:
                 chosen.setdefault("auto_watermark", {})["color"] = color
                 save_data()
                 await query.answer(f"✅ Color set to {color}")
-            
+
             await send_auto_watermark_settings(update, context, user_id, ch_id)
             return
 
@@ -824,7 +702,7 @@ Please send your watermark now:
 
         if data.startswith("set_effect_"):
             parts = data.split("_")
-            
+
             if parts[2] == "speed":
                 ch_id = int(parts[3])
                 context.user_data['next_step'] = f'set_effect_speed_value_{ch_id}'
@@ -844,15 +722,15 @@ Higher value = Slower movement"""
                 # Handle effect types with underscores (scroll_left, scroll_right, etc)
                 effect = "_".join(parts[2:-1])
                 ch_id = int(parts[-1])
-                
+
                 channels = USER_CHANNELS.get(user_id, [])
                 chosen = next((c for c in channels if c["id"] == ch_id), None)
-                
+
                 if chosen:
                     chosen.setdefault("auto_watermark", {})["effect"] = effect
                     save_data()
                     await query.answer(f"✅ Effect set to {effect}")
-                
+
                 await send_auto_watermark_settings(update, context, user_id, ch_id)
             return
 
@@ -871,7 +749,7 @@ Higher value = Slower movement"""
                     return
                 chosen.setdefault("auto_watermark", {})["position"] = position_key
                 save_data()
-            
+
             await send_auto_watermark_settings(update, context, user_id, ch_id)
             return
 
@@ -885,7 +763,7 @@ Higher value = Slower movement"""
                 new_status = "active" if current_status == "inactive" else "inactive"
                 chosen.setdefault("auto_button", {})["status"] = new_status
                 save_data()
-            
+
             await send_auto_button_settings(update, context, user_id, ch_id)
             return
 
@@ -928,7 +806,7 @@ Please send me the new button configuration."""
                 new_status = "active" if current_status == "inactive" else "inactive"
                 chosen.setdefault("auto_captions", {})["status"] = new_status
                 save_data()
-            
+
             await send_auto_caption_settings(update, context, user_id, ch_id)
             return
 
@@ -965,7 +843,7 @@ Your caption will be attached to your post."""
 
             title = chosen.get("title") or chosen.get("username") or str(chosen["id"])
             auto_reactions_status = chosen.get("auto_reactions", {}).get("status", "inactive")
-            
+
             status_emoji = "🟢" if auto_reactions_status == "active" else "🔴"
             status_text = f"Status: {status_emoji} Auto Reactions {auto_reactions_status.upper()}"
 
@@ -993,7 +871,7 @@ Your caption will be attached to your post."""
             parts = data.split("_")
             new_status = parts[3]
             ch_id = int(parts[4])
-            
+
             channels = USER_CHANNELS.get(user_id, [])
             chosen = next((c for c in channels if c["id"] == ch_id), None)
 
@@ -1011,7 +889,7 @@ Your caption will be attached to your post."""
 
             title = chosen.get("title") or chosen.get("username") or str(chosen["id"])
             auto_reactions_status = new_status
-            
+
             status_emoji = "🟢" if auto_reactions_status == "active" else "🔴"
             status_text = f"Status: {status_emoji} Auto Reactions {auto_reactions_status.upper()}"
 
@@ -1080,7 +958,7 @@ Your caption will be attached to your post."""
                 f"*ID:* `{chosen['id']}`\n\n"
                 f"Select a feature to configure:"
             )
-            
+
             await query.edit_message_text(
                 text,
                 parse_mode="Markdown",
@@ -1110,7 +988,7 @@ Your caption will be attached to your post."""
 
         # fallback
         await query.edit_message_text("Unknown action.")
-    
+
     except TelegramError as e:
         logger.error(f"Error in button_router: {e}")
 
@@ -1131,7 +1009,7 @@ async def send_auto_button_settings(update: Update, context: ContextTypes.DEFAUL
     auto_button_config = chosen.get("auto_button", {}).get("config", "Not set")
 
     status_emoji = "🟢" if auto_button_status == "active" else "🔴"
-    
+
     text = f"""⚙️ CHANNEL: {title}
 
 ▲ ═══════════════════════ ▲
@@ -1145,14 +1023,14 @@ Status: {status_emoji} Auto button {auto_button_status.upper()}
 
 ▼ ═══════════════════════ ▼
 What would you like to do? 👇"""
-    
+
     toggle_status_text = "Deactivate" if auto_button_status == "active" else "Activate"
     kb = [
         [InlineKeyboardButton(f"{'🔴' if auto_button_status == 'active' else '🟢'} {toggle_status_text} Auto Button", callback_data=f"toggle_auto_button_status_{ch_id}")],
         [InlineKeyboardButton("🔧 CHANGE BUTTON", callback_data=f"change_auto_button_config_{ch_id}")],
         [InlineKeyboardButton("⪡ Back", callback_data=f"select_{ch_id}")]
     ]
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
@@ -1175,7 +1053,7 @@ async def send_auto_caption_settings(update: Update, context: ContextTypes.DEFAU
     auto_caption_config = chosen.get("auto_captions", {}).get("config", "Not set")
 
     status_emoji = "🟢" if auto_caption_status == "active" else "🔴"
-    
+
     text = f"""⚙️ CHANNEL: {title}
 
 ▲ ═══════════════════════ ▲
@@ -1189,14 +1067,14 @@ Status: {status_emoji} Auto Captions {auto_caption_status.upper()}
 
 ▼ ═══════════════════════ ▼
 What would you like to do? 👇"""
-    
+
     toggle_status_text = "Deactivate" if auto_caption_status == "active" else "Activate"
     kb = [
         [InlineKeyboardButton(f"{'🔴' if auto_caption_status == 'active' else '🟢'} {toggle_status_text} Auto Captions", callback_data=f"toggle_auto_caption_status_{ch_id}")],
         [InlineKeyboardButton("✍️ CHANGE CAPTION", callback_data=f"change_auto_caption_config_{ch_id}")],
         [InlineKeyboardButton("⪡ Back", callback_data=f"select_{ch_id}")]
     ]
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
@@ -1229,7 +1107,7 @@ async def send_auto_watermark_settings(update: Update, context: ContextTypes.DEF
 
     status_emoji = "🟢" if auto_watermark_status == "active" else "🔴"
     type_emoji = "📝" if watermark_type == "text" else ("🖼️" if watermark_type == "image" else "✨")
-    
+
     text = f"""⚙️ CHANNEL: {title}
 
 ▲ ═══════════════════════ ▲
@@ -1245,16 +1123,16 @@ Position: `{watermark_position}`
 Size: `{watermark_size}%`
 Transparency: `{watermark_transparency}%`
 Quality: `{watermark_quality}%`"""
-    
+
     # Add text-specific settings
     if watermark_type == "text":
         text += f"""
 Rotation: `{watermark_rotation}°`
 Color: `{watermark_color}`
 Effect: `{watermark_effect}` (Speed: {watermark_effect_speed})"""
-    
+
     text += "\n\n▼ ═══════════════════════ ▼\nWhat would you like to do? 👇"
-    
+
     toggle_status_text = "Deactivate" if auto_watermark_status == "active" else "Activate"
     kb = [
         [InlineKeyboardButton(f"{'🔴' if auto_watermark_status == 'active' else '🟢'} {toggle_status_text} Auto Watermark", callback_data=f"toggle_auto_watermark_status_{ch_id}")],
@@ -1274,7 +1152,7 @@ Effect: `{watermark_effect}` (Speed: {watermark_effect_speed})"""
         [InlineKeyboardButton("✨ Effects & Speed", callback_data=f"set_watermark_effect_{ch_id}")],
         [InlineKeyboardButton("⪡ Back", callback_data=f"select_{ch_id}")]
     ]
-    
+
     if update.callback_query:
         try:
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
@@ -1307,7 +1185,7 @@ Current Watermark Position: `{current_position}`
 
 ▼ ═══════════════════════ ▼
 Choose the location of the watermark:"""
-    
+
     kb = [
         [
             InlineKeyboardButton("↖️ Top-Left", callback_data=f"set_wm_pos_top_left_{ch_id}"),
@@ -1326,7 +1204,7 @@ Choose the location of the watermark:"""
         ],
         [InlineKeyboardButton("⪡ Back to Watermark Settings", callback_data=f"channel_settings_auto_watermark_{ch_id}")]
     ]
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
@@ -1356,16 +1234,16 @@ Current Watermark Size: `{current_size}%`
 ▼ ═══════════════════════ ▼
 Please send me the new watermark size (a number between 1 and 100).
 This represents the percentage of the original media's size."""
-    
+
     kb = [
         [InlineKeyboardButton("⪡ Back to Watermark Settings", callback_data=f"channel_settings_auto_watermark_{ch_id}")]
     ]
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-    
+
     context.user_data['next_step'] = f'set_watermark_size_value_{ch_id}'
 
 
@@ -1392,16 +1270,16 @@ Current Watermark Transparency: `{current_transparency}%`
 ▼ ═══════════════════════ ▼
 Please send me the new watermark transparency (a number between 0 and 95).
 Where 0% is not transparent, and 95% is barely noticeable."""
-    
+
     kb = [
         [InlineKeyboardButton("⪡ Back to Watermark Settings", callback_data=f"channel_settings_auto_watermark_{ch_id}")]
     ]
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-    
+
     context.user_data['next_step'] = f'set_watermark_transparency_value_{ch_id}'
 
 
@@ -1430,18 +1308,18 @@ Please send me the new watermark quality (a number between 1 and 100).
 
 If you choose less than 30, the quality will be worse, but the finished file size will also be smaller.
 If more than 60, then the size of the finished file may be larger than the original one.
- 
+
 In most cases this setting is not needed and the result will be good with the default setting."""
-    
+
     kb = [
         [InlineKeyboardButton("⪡ Back to Watermark Settings", callback_data=f"channel_settings_auto_watermark_{ch_id}")]
     ]
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-    
+
     context.user_data['next_step'] = f'set_watermark_quality_value_{ch_id}'
 
 
@@ -1473,7 +1351,7 @@ Select rotation angle or send custom value (0-360 degrees):
 • 90° - Vertical
 • 180° - Upside down
 • 270° - Vertical (opposite)"""
-    
+
     kb = [
         [
             InlineKeyboardButton("0°", callback_data=f"set_rot_0_{ch_id}"),
@@ -1488,7 +1366,7 @@ Select rotation angle or send custom value (0-360 degrees):
         [InlineKeyboardButton("✏️ Custom Angle", callback_data=f"set_rot_custom_{ch_id}")],
         [InlineKeyboardButton("⪡ Back to Watermark Settings", callback_data=f"channel_settings_auto_watermark_{ch_id}")]
     ]
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
@@ -1517,7 +1395,7 @@ Current Color: `{current_color}`
 
 ▼ ═══════════════════════ ▼
 Choose watermark text color:"""
-    
+
     kb = [
         [
             InlineKeyboardButton("⚪ White", callback_data=f"set_color_white_{ch_id}"),
@@ -1541,7 +1419,7 @@ Choose watermark text color:"""
         ],
         [InlineKeyboardButton("⪡ Back to Watermark Settings", callback_data=f"channel_settings_auto_watermark_{ch_id}")]
     ]
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
@@ -1588,11 +1466,11 @@ Choose watermark effect for videos:
 • 5-20: Fast
 • 35-50: Medium  
 • 70-100: Slow"""
-    
+
     kb = [
         [InlineKeyboardButton("◽ None (Static)", callback_data=f"set_effect_none_{ch_id}")],
     ]
-    
+
     # Text-only effects
     if watermark_type == "text":
         kb.extend([
@@ -1604,7 +1482,7 @@ Choose watermark effect for videos:
             [InlineKeyboardButton("💫 Pulse/Glow", callback_data=f"set_effect_pulse_{ch_id}")],
             [InlineKeyboardButton("🌊 Smooth Wave", callback_data=f"set_effect_wave_{ch_id}")],
         ])
-    
+
     # Moving diagonal effects (works for all types!)
     kb.extend([
         [InlineKeyboardButton("↘️ Move: Top-Left → Down-Right", callback_data=f"set_effect_move_diagonal_dr_{ch_id}")],
@@ -1614,7 +1492,7 @@ Choose watermark effect for videos:
         [InlineKeyboardButton("⚡ Set Speed", callback_data=f"set_effect_speed_{ch_id}")],
         [InlineKeyboardButton("⪡ Back to Watermark Settings", callback_data=f"channel_settings_auto_watermark_{ch_id}")]
     ])
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
@@ -1625,30 +1503,30 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     """Process a complete media group (album) with watermarks using editMessageMedia."""
     job = context.job
     media_group_id = job.data['media_group_id']
-    
+
     if 'media_groups' not in context.bot_data:
         logger.warning(f"media_groups not found in bot_data")
         return
-    
+
     if media_group_id not in context.bot_data['media_groups']:
         logger.warning(f"Album {media_group_id} not found in media_groups")
         return
-    
+
     album_data = context.bot_data['media_groups'][media_group_id]
-    
+
     # Check if already processed
     if album_data.get('processed', False):
         logger.info(f"Album {media_group_id} already processed, skipping")
         return
-    
+
     # Mark as processed immediately to prevent duplicate execution
     album_data['processed'] = True
-    
+
     messages = album_data['messages']
     ch_id = album_data['chat_id']
-    
+
     logger.info(f"Processing album {media_group_id} with {len(messages)} messages")
-    
+
     # Find channel config
     user_id = None
     channel_config = None
@@ -1660,23 +1538,23 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                 break
         if user_id:
             break
-    
+
     if not channel_config:
         logger.warning(f"No config found for album in channel {ch_id}")
         del context.bot_data['media_groups'][media_group_id]
         return
-    
+
     # Check if watermark is active
     auto_watermark_settings = channel_config.get("auto_watermark")
     watermark_active = (auto_watermark_settings and 
                        auto_watermark_settings.get("status") == "active" and
                        auto_watermark_settings.get("config") not in [None, "Not set"])
-    
+
     if not watermark_active:
         logger.info(f"Watermark not active for album, skipping")
         del context.bot_data['media_groups'][media_group_id]
         return
-    
+
     # Process each message in the album using editMessageMedia
     success_count = 0
     for msg in messages:
@@ -1691,17 +1569,17 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
             watermark_color = auto_watermark_settings.get("color", "white")
             watermark_effect = auto_watermark_settings.get("effect", "none")
             watermark_effect_speed = auto_watermark_settings.get("effect_speed", 50)
-            
+
             # Get caption
             caption = msg.caption if msg.caption else None
             caption_entities = msg.caption_entities if msg.caption_entities else None
-            
+
             # Download and watermark
             if msg.photo:
                 file_id = msg.photo[-1].file_id
                 downloaded_path = await download_telegram_file(context, file_id, "jpg", max_size_mb=20)
                 watermarked_path = TEMP_DIR / f"watermarked_{uuid.uuid4()}.jpg"
-                
+
                 await apply_watermark(
                     downloaded_path, watermarked_path, watermark_config_text,
                     watermark_position, watermark_size, watermark_transparency,
@@ -1709,11 +1587,11 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                     rotation=watermark_rotation, color=watermark_color,
                     effect=watermark_effect, effect_speed=watermark_effect_speed
                 )
-                
+
                 # Replace media using editMessageMedia
                 with open(watermarked_path, 'rb') as f:
                     media = InputMediaPhoto(media=f, caption=caption, caption_entities=caption_entities)
-                    
+
                     try:
                         await context.bot.edit_message_media(
                             chat_id=ch_id,
@@ -1724,16 +1602,16 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                         success_count += 1
                     except TelegramError as e:
                         logger.error(f"Error replacing photo {msg.message_id} in album: {e}")
-                
+
                 # Cleanup
                 downloaded_path.unlink()
                 watermarked_path.unlink()
-                
+
             elif msg.video:
                 file_id = msg.video.file_id
                 downloaded_path = await download_telegram_file(context, file_id, "mp4", max_size_mb=20)
                 watermarked_path = TEMP_DIR / f"watermarked_{uuid.uuid4()}.mp4"
-                
+
                 await apply_watermark(
                     downloaded_path, watermarked_path, watermark_config_text,
                     watermark_position, watermark_size, watermark_transparency,
@@ -1741,11 +1619,11 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                     rotation=watermark_rotation, color=watermark_color,
                     effect=watermark_effect, effect_speed=watermark_effect_speed
                 )
-                
+
                 # Replace media using editMessageMedia
                 with open(watermarked_path, 'rb') as f:
                     media = InputMediaVideo(media=f, caption=caption, caption_entities=caption_entities)
-                    
+
                     try:
                         await context.bot.edit_message_media(
                             chat_id=ch_id,
@@ -1756,18 +1634,18 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                         success_count += 1
                     except TelegramError as e:
                         logger.error(f"Error replacing video {msg.message_id} in album: {e}")
-                
+
                 # Cleanup
                 downloaded_path.unlink()
                 watermarked_path.unlink()
-                
+
         except Exception as e:
             logger.error(f"Error watermarking message {msg.message_id} in album: {e}")
             # Continue with other messages
             continue
-    
+
     logger.info(f"Album processing complete: {success_count}/{len(messages)} items watermarked")
-    
+
     # Cleanup
     del context.bot_data['media_groups'][media_group_id]
 
@@ -1778,27 +1656,27 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     message = update.message
     text = message.text if message.text else None
     next_step = context.user_data.get('next_step')
-    
+
     # Debug logging
     logger.info(f"handle_user_message: user={user_id}, text={bool(text)}, photo={bool(message.photo)}, animation={bool(message.animation)}, next_step={next_step}")
 
     if next_step and next_step.startswith('set_auto_button_config_'):
         ch_id = int(next_step.split("_")[-1])
-        
+
         # Button config requires text
         if not text:
             await update.message.reply_text("❌ Please send text for button configuration.")
             return
-        
+
         channels = USER_CHANNELS.get(user_id, [])
         chosen = next((c for c in channels if c["id"] == ch_id), None)
         if chosen:
             chosen.setdefault("auto_button", {})["config"] = text
             save_data()
-            
+
             await update.message.reply_text("✅ Button configuration updated!")
             del context.user_data['next_step']
-            
+
             await send_auto_button_settings(update, context, user_id, ch_id)
         else:
             await update.message.reply_text("Channel not found.")
@@ -1809,13 +1687,13 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         ch_id = int(next_step.split("_")[-1])
         logger.info(f"[WATERMARK] Processing watermark config for channel {ch_id}")
         logger.info(f"[WATERMARK] Message has: text={bool(message.text)}, photo={bool(message.photo)}, animation={bool(message.animation)}")
-        
+
         channels = USER_CHANNELS.get(user_id, [])
         chosen = next((c for c in channels if c["id"] == ch_id), None)
         if chosen:
             watermark_data = chosen.setdefault("auto_watermark", {})
             logger.info(f"[WATERMARK] Current watermark_data: {watermark_data}")
-            
+
             # Check if user sent text, photo, or animation
             if message.text:
                 # Text watermark
@@ -1826,7 +1704,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 watermark_data.pop("file_id", None)
                 watermark_data.pop("file_path", None)
                 await update.message.reply_text("✅ Text watermark saved!")
-                
+
             elif message.photo:
                 # Image watermark (download and save file_id)
                 file_id = message.photo[-1].file_id
@@ -1834,7 +1712,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 watermark_data["type"] = "image"
                 watermark_data["config"] = "Image watermark"
                 watermark_data["file_id"] = file_id
-                
+
                 # Download and save the image file
                 try:
                     watermark_file = await context.bot.get_file(file_id)
@@ -1847,9 +1725,9 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     logger.error(f"[WATERMARK] ✗ Error saving image watermark: {e}", exc_info=True)
                     await update.message.reply_text(f"⚠️ Image saved but download failed: {e}\nTry sending again.")
                     return
-                
+
                 await update.message.reply_text("✅ Image watermark saved! Your logo will be overlaid on posts.")
-                
+
             elif message.animation:
                 # GIF/Animation watermark
                 file_id = message.animation.file_id
@@ -1857,7 +1735,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 watermark_data["type"] = "animation"
                 watermark_data["config"] = "GIF watermark"
                 watermark_data["file_id"] = file_id
-                
+
                 # Download and save the animation file
                 try:
                     watermark_file = await context.bot.get_file(file_id)
@@ -1870,13 +1748,13 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     logger.error(f"[WATERMARK] ✗ Error saving GIF watermark: {e}", exc_info=True)
                     await update.message.reply_text(f"⚠️ GIF saved but download failed: {e}\nTry sending again.")
                     return
-                
+
                 await update.message.reply_text("✅ GIF watermark saved! Your animated logo will be overlaid on posts.")
             else:
                 logger.warning("[WATERMARK] Unknown message type for watermark config")
                 await update.message.reply_text("❌ Please send text, image, or GIF as watermark.")
                 return
-            
+
             logger.info(f"[WATERMARK] Final watermark_data: type={watermark_data.get('type')}, config={watermark_data.get('config')}, file_id={watermark_data.get('file_id')[:20] if watermark_data.get('file_id') else None}...")
             save_data()
             logger.info(f"[WATERMARK] ✓ Data saved to disk")
@@ -1890,7 +1768,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if next_step and next_step.startswith('set_watermark_size_value_'):
         ch_id = int(next_step.split("_")[-1])
-        
+
         channels = USER_CHANNELS.get(user_id, [])
         chosen = next((c for c in channels if c["id"] == ch_id), None)
         if chosen:
@@ -1904,7 +1782,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await update.message.reply_text("❌ Size must be between 1 and 100.")
             except ValueError:
                 await update.message.reply_text("❌ Invalid input. Please send a number for the size.")
-            
+
             del context.user_data['next_step']
             await send_auto_watermark_settings(update, context, user_id, ch_id)
         else:
@@ -1914,7 +1792,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if next_step and next_step.startswith('set_watermark_transparency_value_'):
         ch_id = int(next_step.split("_")[-1])
-        
+
         channels = USER_CHANNELS.get(user_id, [])
         chosen = next((c for c in channels if c["id"] == ch_id), None)
         if chosen:
@@ -1928,7 +1806,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await update.message.reply_text("❌ Transparency must be between 0 and 95.")
             except ValueError:
                 await update.message.reply_text("❌ Invalid input. Please send a number for the transparency.")
-            
+
             del context.user_data['next_step']
             await send_auto_watermark_settings(update, context, user_id, ch_id)
         else:
@@ -1938,7 +1816,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if next_step and next_step.startswith('set_watermark_quality_value_'):
         ch_id = int(next_step.split("_")[-1])
-        
+
         channels = USER_CHANNELS.get(user_id, [])
         chosen = next((c for c in channels if c["id"] == ch_id), None)
         if chosen:
@@ -1952,7 +1830,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await update.message.reply_text("❌ Quality must be between 1 and 100.")
             except ValueError:
                 await update.message.reply_text("❌ Invalid input. Please send a number for the quality.")
-            
+
             del context.user_data['next_step']
             await send_auto_watermark_settings(update, context, user_id, ch_id)
         else:
@@ -1962,7 +1840,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if next_step and next_step.startswith('set_watermark_rotation_value_'):
         ch_id = int(next_step.split("_")[-1])
-        
+
         channels = USER_CHANNELS.get(user_id, [])
         chosen = next((c for c in channels if c["id"] == ch_id), None)
         if chosen:
@@ -1976,7 +1854,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await update.message.reply_text("❌ Rotation must be between 0 and 360 degrees.")
             except ValueError:
                 await update.message.reply_text("❌ Invalid input. Please send a number for the rotation.")
-            
+
             del context.user_data['next_step']
             await send_auto_watermark_settings(update, context, user_id, ch_id)
         else:
@@ -1986,7 +1864,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if next_step and next_step.startswith('set_effect_speed_value_'):
         ch_id = int(next_step.split("_")[-1])
-        
+
         channels = USER_CHANNELS.get(user_id, [])
         chosen = next((c for c in channels if c["id"] == ch_id), None)
         if chosen:
@@ -2001,7 +1879,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await update.message.reply_text("❌ Speed must be between 1 and 100.")
             except ValueError:
                 await update.message.reply_text("❌ Invalid input. Please send a number for the speed.")
-            
+
             del context.user_data['next_step']
             await send_auto_watermark_settings(update, context, user_id, ch_id)
         else:
@@ -2011,7 +1889,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if next_step and next_step.startswith('set_auto_caption_config_'):
         ch_id = int(next_step.split("_")[-1])
-        
+
         channels = USER_CHANNELS.get(user_id, [])
         chosen = next((c for c in channels if c["id"] == ch_id), None)
         if chosen:
@@ -2019,10 +1897,10 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             auto_captions["config"] = message.text
             auto_captions["entities"] = [e.to_dict() for e in message.entities] if message.entities else []
             save_data()
-            
+
             await update.message.reply_text("✅ Caption configuration updated!")
             del context.user_data['next_step']
-            
+
             await send_auto_caption_settings(update, context, user_id, ch_id)
         else:
             await update.message.reply_text("Channel not found.")
@@ -2036,16 +1914,16 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     ch_id = channel_post.chat_id
-    
+
     # Check if this is part of a media group (album)
     media_group_id = channel_post.media_group_id
     is_album = media_group_id is not None
-    
+
     # If it's part of an album, store it for batch processing
     if is_album:
         if 'media_groups' not in context.bot_data:
             context.bot_data['media_groups'] = {}
-        
+
         if media_group_id not in context.bot_data['media_groups']:
             context.bot_data['media_groups'][media_group_id] = {
                 'messages': [],
@@ -2053,10 +1931,10 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                 'timestamp': channel_post.date.timestamp(),
                 'job_scheduled': False  # Track if job is already scheduled
             }
-        
+
         context.bot_data['media_groups'][media_group_id]['messages'].append(channel_post)
         logger.info(f"Stored album message {channel_post.message_id} in group {media_group_id}")
-        
+
         # Schedule album processing only ONCE per album
         if not context.bot_data['media_groups'][media_group_id]['job_scheduled']:
             context.job_queue.run_once(
@@ -2067,7 +1945,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             context.bot_data['media_groups'][media_group_id]['job_scheduled'] = True
             logger.info(f"Scheduled album processing job for {media_group_id}")
-        
+
         return  # Don't process individual messages from album yet
 
     user_id = None
@@ -2080,7 +1958,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                 break
         if user_id:
             break
-            
+
     if not channel_config:
         return
 
@@ -2104,9 +1982,9 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
         watermark_effect_speed = auto_watermark_settings.get("effect_speed", 50)
         watermark_file_id = auto_watermark_settings.get("file_id")
         watermark_file_path = auto_watermark_settings.get("file_path")
-        
+
         logger.info(f"Watermark active: type={watermark_type}, config={watermark_config_text}, file_id={watermark_file_id}, file_path={watermark_file_path}")
-        
+
         # Validate settings based on type
         if watermark_type == "text":
             if not watermark_config_text or watermark_config_text == "Not set":
@@ -2121,7 +1999,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
         is_text_message = channel_post.text is not None
         original_text = channel_post.text if is_text_message else channel_post.caption
         original_entities = channel_post.entities if is_text_message else channel_post.caption_entities
-        
+
         final_text = original_text
         final_entities = list(original_entities) if original_entities else []
         final_reply_markup = channel_post.reply_markup
@@ -2147,7 +2025,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                             line_buttons.append(InlineKeyboardButton(text, url=url))
                     if line_buttons:
                         buttons.append(line_buttons)
-                
+
                 if buttons:
                     final_reply_markup = InlineKeyboardMarkup(buttons)
 
@@ -2156,7 +2034,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
         if auto_caption_settings and auto_caption_settings.get("status") == "active":
             caption_config_text = auto_caption_settings.get("config")
             caption_config_entities_dict = auto_caption_settings.get("entities", [])
-            
+
             if caption_config_text and caption_config_text != "Not set":
                 caption_config_entities = [MessageEntity(**e) for e in caption_config_entities_dict]
 
@@ -2164,7 +2042,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                     separator = "\n\n"
                     base_len = len(final_text.encode('utf-16-le')) // 2
                     final_text += separator + caption_config_text
-                    
+
                     offset = base_len + len(separator.encode('utf-16-le')) // 2
                     # Create new entities with adjusted offset (can't modify immutable entities)
                     adjusted_entities = [
@@ -2189,16 +2067,16 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
         try:
             if channel_post.photo:
                 logger.info(f"Applying {watermark_type} watermark to photo for channel {ch_id}")
-                
+
                 file_id = channel_post.photo[-1].file_id
                 downloaded_file_path = await download_telegram_file(context, file_id, "jpg")
-                
+
                 watermarked_file_path = TEMP_DIR / f"watermarked_{uuid.uuid4()}.jpg"
-                
+
                 logger.info(f"[WATERMARK] Watermark type: {watermark_type}")
                 logger.info(f"[WATERMARK] file_id: {watermark_file_id[:20] if watermark_file_id else None}...")
                 logger.info(f"[WATERMARK] file_path: {watermark_file_path}")
-                
+
                 # Apply appropriate watermark type
                 if watermark_type in ["image", "animation"]:
                     # Image/GIF watermark overlay
@@ -2206,18 +2084,18 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                     watermark_image_path = Path(watermark_file_path) if watermark_file_path else None
                     logger.info(f"[WATERMARK] Watermark path: {watermark_image_path}")
                     logger.info(f"[WATERMARK] Path exists: {watermark_image_path.exists() if watermark_image_path else False}")
-                    
+
                     if not watermark_image_path or not watermark_image_path.exists():
                         # Re-download if file doesn't exist
                         logger.info(f"[WATERMARK] Watermark file missing, re-downloading for channel {ch_id}")
                         if not watermark_file_id:
                             raise Exception("No watermark file_id found. Please set watermark again.")
-                        
+
                         watermark_file = await context.bot.get_file(watermark_file_id)
                         watermark_image_path = TEMP_DIR / f"watermark_{ch_id}_temp.png"
                         await watermark_file.download_to_drive(watermark_image_path)
                         logger.info(f"[WATERMARK] Re-downloaded to: {watermark_image_path} (exists: {watermark_image_path.exists()})")
-                    
+
                     logger.info(f"[WATERMARK] Calling apply_image_watermark with size={watermark_size}%, transparency={watermark_transparency}%, rotation={watermark_rotation}°")
                     await apply_image_watermark(
                         downloaded_file_path,
@@ -2251,7 +2129,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                         effect_speed=watermark_effect_speed,
                     )
                     logger.info(f"[WATERMARK] ✓ Text watermark applied successfully")
-                
+
                 # Replace media using editMessageMedia (preserves message ID, reactions, etc.)
                 with open(watermarked_file_path, 'rb') as f:
                     media = InputMediaPhoto(
@@ -2259,7 +2137,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                         caption=final_text,
                         caption_entities=final_entities,
                     )
-                    
+
                     try:
                         edited_message = await context.bot.edit_message_media(
                             chat_id=ch_id,
@@ -2276,7 +2154,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                             await context.bot.delete_message(chat_id=ch_id, message_id=channel_post.message_id)
                         except TelegramError:
                             pass
-                        
+
                         with open(watermarked_file_path, 'rb') as f2:
                             edited_message = await context.bot.send_photo(
                                 chat_id=ch_id,
@@ -2285,7 +2163,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                                 caption_entities=final_entities,
                                 reply_markup=final_reply_markup,
                             )
-                
+
                 # Handle Auto Reactions on the message
                 auto_reactions_settings = channel_config.get("auto_reactions")
                 if auto_reactions_settings and auto_reactions_settings.get("status") == "active":
@@ -2302,36 +2180,36 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                     except TelegramError as e:
                         # Ignore reaction errors (message might not support reactions)
                         logger.warning(f"Could not set reaction (this is normal): {e}")
-                
+
                 return  # Exit handler - we've replaced the message
 
             elif channel_post.video:
                 logger.info(f"Applying {watermark_type} watermark to video for channel {ch_id}")
-                
+
                 file_id = channel_post.video.file_id
                 downloaded_file_path = await download_telegram_file(context, file_id, "mp4")
-                
+
                 watermarked_file_path = TEMP_DIR / f"watermarked_{uuid.uuid4()}.mp4"
-                
+
                 logger.info(f"[WATERMARK] Watermark type for video: {watermark_type}")
-                
+
                 # Apply appropriate watermark type
                 if watermark_type in ["image", "animation"]:
                     # Image/GIF watermark overlay
                     logger.info(f"[WATERMARK] Applying image/GIF watermark overlay to video")
                     watermark_image_path = Path(watermark_file_path) if watermark_file_path else None
-                    
+
                     if not watermark_image_path or not watermark_image_path.exists():
                         # Re-download if file doesn't exist
                         logger.info(f"[WATERMARK] Watermark file missing, re-downloading for channel {ch_id}")
                         if not watermark_file_id:
                             raise Exception("No watermark file_id found. Please set watermark again.")
-                        
+
                         watermark_file = await context.bot.get_file(watermark_file_id)
                         watermark_image_path = TEMP_DIR / f"watermark_{ch_id}_temp.png"
                         await watermark_file.download_to_drive(watermark_image_path)
                         logger.info(f"[WATERMARK] Re-downloaded to: {watermark_image_path}")
-                    
+
                     logger.info(f"[WATERMARK] Calling apply_image_watermark for video with rotation={watermark_rotation}°, effect={watermark_effect}")
                     await apply_image_watermark(
                         downloaded_file_path,
@@ -2365,7 +2243,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                         effect_speed=watermark_effect_speed,
                     )
                     logger.info(f"[WATERMARK] ✓ Text watermark applied to video")
-                
+
                 # Replace media using editMessageMedia (preserves message ID, reactions, etc.)
                 with open(watermarked_file_path, 'rb') as f:
                     media = InputMediaVideo(
@@ -2373,7 +2251,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                         caption=final_text,
                         caption_entities=final_entities,
                     )
-                    
+
                     try:
                         edited_message = await context.bot.edit_message_media(
                             chat_id=ch_id,
@@ -2390,7 +2268,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                             await context.bot.delete_message(chat_id=ch_id, message_id=channel_post.message_id)
                         except TelegramError:
                             pass
-                        
+
                         with open(watermarked_file_path, 'rb') as f2:
                             edited_message = await context.bot.send_video(
                                 chat_id=ch_id,
@@ -2399,7 +2277,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                                 caption_entities=final_entities,
                                 reply_markup=final_reply_markup,
                             )
-                
+
                 # Handle Auto Reactions on the message
                 auto_reactions_settings = channel_config.get("auto_reactions")
                 if auto_reactions_settings and auto_reactions_settings.get("status") == "active":
@@ -2409,22 +2287,22 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                         reactions = ["👍", "❤️", "🔥"]
                         await context.bot.set_message_reaction(
                             chat_id=ch_id,
-                            message_id=new_message.message_id,
+                            message_id=edited_message.message_id,
                             reaction=[ReactionTypeEmoji(emoji=reactions[0])]
                         )
                         logger.info(f"Applied reaction to watermarked video")
                     except TelegramError as e:
                         # Ignore reaction errors (message might not support reactions)
                         logger.warning(f"Could not set reaction (this is normal): {e}")
-                
+
                 return  # Exit handler
 
             elif channel_post.animation:
                 logger.info(f"Applying GIF watermark for channel {ch_id}")
-                
+
                 file_id = channel_post.animation.file_id
                 downloaded_file_path = await download_telegram_file(context, file_id, "mp4")
-                
+
                 watermarked_file_path = TEMP_DIR / f"watermarked_{uuid.uuid4()}.mp4"
                 await apply_watermark(
                     downloaded_file_path,
@@ -2440,7 +2318,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                     effect=watermark_effect,
                     effect_speed=watermark_effect_speed,
                 )
-                
+
                 # Replace media using editMessageMedia (preserves message ID, reactions, etc.)
                 with open(watermarked_file_path, 'rb') as f:
                     media = InputMediaAnimation(
@@ -2448,7 +2326,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                         caption=final_text,
                         caption_entities=final_entities,
                     )
-                    
+
                     try:
                         edited_message = await context.bot.edit_message_media(
                             chat_id=ch_id,
@@ -2465,7 +2343,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                             await context.bot.delete_message(chat_id=ch_id, message_id=channel_post.message_id)
                         except TelegramError:
                             pass
-                        
+
                         with open(watermarked_file_path, 'rb') as f2:
                             edited_message = await context.bot.send_animation(
                                 chat_id=ch_id,
@@ -2474,7 +2352,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                                 caption_entities=final_entities,
                                 reply_markup=final_reply_markup,
                             )
-                
+
                 # Handle Auto Reactions on the message
                 auto_reactions_settings = channel_config.get("auto_reactions")
                 if auto_reactions_settings and auto_reactions_settings.get("status") == "active":
@@ -2484,14 +2362,14 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                         reactions = ["👍", "❤️", "🔥"]
                         await context.bot.set_message_reaction(
                             chat_id=ch_id,
-                            message_id=new_message.message_id,
+                            message_id=edited_message.message_id,
                             reaction=[ReactionTypeEmoji(emoji=reactions[0])]
                         )
                         logger.info(f"Applied reaction to watermarked animation")
                     except TelegramError as e:
                         # Ignore reaction errors (message might not support reactions)
                         logger.warning(f"Could not set reaction (this is normal): {e}")
-                
+
                 return  # Exit handler
 
         except Exception as e:
@@ -2499,7 +2377,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
             # Send detailed error notification to channel
             error_type = type(e).__name__
             error_msg = str(e)
-            
+
             # Check if it's a file size error
             if "too big" in error_msg.lower() or "file is too large" in error_msg.lower():
                 error_details = f"⚠️ **Watermarking Failed: File Too Large**\n\n"
@@ -2507,18 +2385,18 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                 error_details += f"📍 **Message Details:**\n"
                 error_details += f"• Chat ID: `{ch_id}`\n"
                 error_details += f"• Message ID: `{channel_post.message_id}`\n"
-                
+
                 # Create message link
                 channel_username = None
                 for ch in USER_CHANNELS.get(context.bot_data.get('MAIN_ADMIN_ID', 0), []):
                     if ch.get('id') == ch_id:
                         channel_username = ch.get('username')
                         break
-                
+
                 if channel_username:
                     msg_link = f"https://t.me/{channel_username}/{channel_post.message_id}"
                     error_details += f"• Link: {msg_link}\n"
-                
+
                 error_details += f"\n💡 **Tip:** Upload smaller files or use compression."
             else:
                 error_details = f"⚠️ **Watermarking Failed**\n\n"
@@ -2527,20 +2405,20 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                 error_details += f"📍 **Message Details:**\n"
                 error_details += f"• Chat ID: `{ch_id}`\n"
                 error_details += f"• Message ID: `{channel_post.message_id}`\n"
-                
+
                 # Create message link
                 channel_username = None
                 for ch in USER_CHANNELS.get(context.bot_data.get('MAIN_ADMIN_ID', 0), []):
                     if ch.get('id') == ch_id:
                         channel_username = ch.get('username')
                         break
-                
+
                 if channel_username:
                     msg_link = f"https://t.me/{channel_username}/{channel_post.message_id}"
                     error_details += f"• Link: {msg_link}\n"
-                
+
                 error_details += f"\n💡 Check logs for full error details."
-            
+
             try:
                 await context.bot.send_message(
                     chat_id=ch_id,
@@ -2573,13 +2451,13 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # --- If we reach here, either watermark is inactive or it's a text/sticker/other message ---
     # --- Handle normal editing for buttons, captions, reactions ---
-    
+
     final_reply_markup = channel_post.reply_markup
-    
+
     is_text_message = channel_post.text is not None
     original_text = channel_post.text if is_text_message else channel_post.caption
     original_entities = channel_post.entities if is_text_message else channel_post.caption_entities
-    
+
     final_text = original_text
     final_entities = list(original_entities) if original_entities else []
 
@@ -2604,7 +2482,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                         line_buttons.append(InlineKeyboardButton(text, url=url))
                 if line_buttons:
                     buttons.append(line_buttons)
-            
+
             if buttons:
                 final_reply_markup = InlineKeyboardMarkup(buttons)
 
@@ -2613,7 +2491,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
     if auto_caption_settings and auto_caption_settings.get("status") == "active":
         caption_config_text = auto_caption_settings.get("config")
         caption_config_entities_dict = auto_caption_settings.get("entities", [])
-        
+
         if caption_config_text and caption_config_text != "Not set":
             caption_config_entities = [MessageEntity(**e) for e in caption_config_entities_dict]
 
@@ -2621,7 +2499,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                 separator = "\n\n"
                 base_len = len(final_text.encode('utf-16-le')) // 2
                 final_text += separator + caption_config_text
-                
+
                 offset = base_len + len(separator.encode('utf-16-le')) // 2
                 # Create new entities with adjusted offset (can't modify immutable entities)
                 adjusted_entities = [
@@ -2703,14 +2581,14 @@ async def handle_forwarded_message(update: Update, context: ContextTypes.DEFAULT
     try:
         if isinstance(origin, MessageOriginChannel):
             fchat: Chat = origin.chat
-            
+
             # Determine chat type
             chat_type = "channel"  # Default
             if fchat.type in ["group", "supergroup"]:
                 chat_type = fchat.type
             elif fchat.type == "channel":
                 chat_type = "channel"
-            
+
             ch_info = {
                 "id": fchat.id, 
                 "title": fchat.title, 
@@ -2732,7 +2610,7 @@ async def handle_forwarded_message(update: Update, context: ContextTypes.DEFAULT
                     "effect_speed": 1  # NEW: 1-10 (1=slow, 10=fast)
                 }
             }
-            
+
             USER_CHANNELS.setdefault(user_id, [])
 
             if any(c["id"] == ch_info["id"] for c in USER_CHANNELS[user_id]):
@@ -2744,10 +2622,10 @@ async def handle_forwarded_message(update: Update, context: ContextTypes.DEFAULT
             else:
                 USER_CHANNELS[user_id].append(ch_info)
                 save_data()
-                
+
                 chat_icon = "📢" if chat_type == "channel" else "👥"
                 chat_type_name = "Channel" if chat_type == "channel" else "Group"
-                
+
                 await msg.reply_text(
                     f"✅ *{chat_type_name} Saved Successfully!*\n\n"
                     f"{chat_icon} *{ch_info.get('title') or ch_info.get('username') or ch_info['id']}*\n\n"
@@ -2805,7 +2683,7 @@ async def handle_text_channel_username(update: Update, context: ContextTypes.DEF
 
     # Determine chat type
     chat_type = chat.type
-    
+
     ch_info = {
         "id": chat.id, 
         "title": chat.title, 
@@ -2828,7 +2706,7 @@ async def handle_text_channel_username(update: Update, context: ContextTypes.DEF
         }
     }
     USER_CHANNELS.setdefault(user_id, [])
-    
+
     try:
         if any(c["id"] == ch_info["id"] for c in USER_CHANNELS[user_id]):
             chat_icon = "📢" if chat_type == "channel" else "👥"
@@ -2839,10 +2717,10 @@ async def handle_text_channel_username(update: Update, context: ContextTypes.DEF
         else:
             USER_CHANNELS[user_id].append(ch_info)
             save_data()
-            
+
             chat_icon = "📢" if chat_type == "channel" else "👥"
             chat_type_name = "Channel" if chat_type == "channel" else "Group"
-            
+
             await update.message.reply_text(
                 f"✅ *{chat_type_name} Saved Successfully!*\n\n"
                 f"{chat_icon} *{ch_info.get('title') or ch_info.get('username') or ch_info['id']}*",
@@ -2901,10 +2779,10 @@ async def dump_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     response_lines = ["📊 *BOT DATA DUMP*\n"]
-    
+
     total_channels = 0
     total_groups = 0
-    
+
     for uid, channels in USER_CHANNELS.items():
         response_lines.append(f"👤 *User ID:* `{uid}`")
         if not channels:
@@ -2915,18 +2793,18 @@ async def dump_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ch_id = ch.get("id")
                 username = f"@{ch['username']}" if ch.get("username") else "N/A"
                 chat_type = ch.get("type", "channel")
-                
+
                 if chat_type in ["group", "supergroup"]:
                     total_groups += 1
                     icon = "👥"
                 else:
                     total_channels += 1
                     icon = "📢"
-                
+
                 response_lines.append(f"  {icon} *{chat_type.upper()}:* {title}")
                 response_lines.append(f"    - `ID`: `{ch_id}`")
                 response_lines.append(f"    - `Username`: {username}")
-                
+
                 # Show active features
                 active_features = []
                 if ch.get("auto_button", {}).get("status") == "active":
@@ -2937,12 +2815,12 @@ async def dump_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     active_features.append("❤️ Reactions")
                 if ch.get("auto_watermark", {}).get("status") == "active":
                     active_features.append("🖼️ Watermark")
-                
+
                 if active_features:
                     response_lines.append(f"    - `Active`: {', '.join(active_features)}")
-                
+
         response_lines.append("")
-    
+
     # Add summary
     response_lines.append(f"📊 *SUMMARY*")
     response_lines.append(f"Total Users: {len(USER_CHANNELS)}")
@@ -2950,7 +2828,7 @@ async def dump_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response_lines.append(f"Total Groups: {total_groups}")
 
     response_text = "\n".join(response_lines)
-    
+
     try:
         if len(response_text) > 4000:
             for i in range(0, len(response_text), 4000):
@@ -2980,7 +2858,7 @@ def main():
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Log errors caused by updates."""
         logger.error(f"Exception while handling an update: {context.error}")
-        
+
         # Try to notify the user
         if update and hasattr(update, 'effective_message') and update.effective_message:
             try:
@@ -2990,7 +2868,7 @@ def main():
                 )
             except Exception:
                 pass  # Ignore errors in error handler
-    
+
     # Register error handler
     app.add_error_handler(error_handler)
 
@@ -3013,7 +2891,7 @@ def main():
     logger.info("🤖 Bot starting...")
     logger.info("=" * 50)
     print("\n✓ Bot is running... Press Ctrl+C to stop\n")
-    
+
     try:
         app.run_polling()
     except KeyboardInterrupt:
