@@ -51,12 +51,21 @@ class Config:
 ---
 # --- Load from environment or use defaults for testing ---
 class Config:
-    API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
-    API_HASH = os.getenv("TELEGRAM_API_HASH", "")
-    BOT_TOKEN = os.getenv("MANAGER_BOT_TOKEN", "")
-    MAIN_ADMIN_ID = int(os.getenv("MAIN_ADMIN_ID", "0"))
-    DATA_FILE = Path("bot_data.json")
 
+
+    API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
+
+
+    API_HASH = os.getenv("TELEGRAM_API_HASH", "")
+
+
+    BOT_TOKEN = os.getenv("MANAGER_BOT_TOKEN", "")
+
+
+    MAIN_ADMIN_ID = int(os.getenv("MAIN_ADMIN_ID", "0"))
+
+
+    DATA_FILE = Path("bot_data.json")
 
     
     @classmethod
