@@ -1,14 +1,16 @@
 services:
   - type: web
-    name: filebot
-    env: python
+    name: telegram-watermark-bot
+    env: docker
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11
-      - key: PORT
-        value: 10000
-    healthCheckPath: /
     autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: MANAGER_BOT_TOKEN
+        sync: false
+      - key: MAIN_ADMIN_ID
+        sync: false
