@@ -54,8 +54,7 @@ class Config:
     API_HASH = os.getenv("TELEGRAM_API_HASH")
     BOT_TOKEN = os.getenv("MANAGER_BOT_TOKEN")
     MAIN_ADMIN_ID = int(os.getenv("MAIN_ADMIN_ID"))
-
-    DATA_FILE = Path("/tmp/bot_data.json")  # ← FIXED INDENT
+        DATA_FILE = Path("bot_data.json")
 
     
     @classmethod
